@@ -16,6 +16,7 @@ sdk.service(function(err, flex) {
 
 
         function getCollectionData(collectionName) {
+            // if we want to just pull Active records, we can uncomment these two lines
             //const query = new modules.Query();
             //query.equalTo('Active', 'true');
             const collection = dataStore.collection(collectionName);
@@ -35,17 +36,18 @@ sdk.service(function(err, flex) {
         }
 
         const promise = Promise.props({
+            // pull both orderheader records and order detail records
+            //
             orderheader: getCollectionData('orderheader'),
             orderdetail: getCollectionData('orderdetail')
         });
 
 
         promise.then((results) => {
-
+            // create a mapping where the OrderID and OrderDeviceID are indexes into the array, for fast
+            // retireval of the records when joining with the header records
+            //
             const detailsMap = {};
-
-
-
 
             for (var i = 0, len = results.orderdetail.length; i < len; i++) {
                 if (!detailsMap[results.orderdetail[i].OrderID + results.orderdetail[i].OrderDeviceID]) {
@@ -67,6 +69,8 @@ sdk.service(function(err, flex) {
             console.log(results.orderheader.length);
 
             function saveme(entity, doneCallback) {
+                // persist the joined records back to the ordercache collection
+                //
                 cacheCollection.save(entity, (err, savedResult) => {
 
                     if (err) {
@@ -80,8 +84,8 @@ sdk.service(function(err, flex) {
 
             };
 
-            //async.each(results.orderheader, saveme, function(err) {
-            async.eachLimit(results.orderheader, 5, saveme, (err) => { // code }
+            
+            async.eachLimit(results.orderheader, 5, saveme, (err) => { 
 
                 if (err) {
                     console.log('error writing');
@@ -91,11 +95,7 @@ sdk.service(function(err, flex) {
                     console.log("complete");
                     return complete().setBody().ok().done();
                 }
-
             });
-
-
-
         }).catch((error) => {
             console.log('final catch');
             console.log(error);
