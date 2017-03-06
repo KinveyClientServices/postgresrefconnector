@@ -1,49 +1,106 @@
-/*
-TO DO:  Populate the *** fields with the appropriate values for your postgres db
-*/
 const sdk = require('kinvey-flex-sdk');
-var pg = require('pg');
-
-function listHandler(req, complete, modules) {
-    console.log('****inside listhandler****');
-
-    var client = new pg.Client({
-        user: "***",
-        password: "***",
-        database: "***",
-        port: 5432,
-        host: "***",
-        ssl: true
-    });
-
-    // connect to our database
-    client.connect(function(err) {
-        if (err) throw err;
-
-        // execute a query on our database
-        //client.query('SELECT $1::text as name', ['brianc'], function (err, result) {
-        client.query('SELECT * from accounts', function(err, result) {
-            if (err) throw err;
-
-            // just print the result to the console
-            console.log(result.rows); // outputs: { name: 'brianc' }
-
-            // disconnect the client
-            client.end(function(err) {
-                if (err) throw err;
-
-            });
-            complete(result.rows).ok().next();
-        });
-    });
-
-}
-
+var Promise = require("bluebird");
+const async = require('async');
+const request = require('request'); // assumes that the request module was added to package.json
 
 sdk.service(function(err, flex) {
-    const data = flex.data;
+    const flexFunctions = flex.functions; // gets the FlexFunctions object from the service
 
-    //var dataLink = service.dataLink; // gets the datalink object from the service
-    var postgres = data.serviceObject('Doctors');
-    postgres.onGetAll(listHandler);
+    function cacheOrderData(context, complete, modules) {
+
+        console.log("***INSIDE CACHERORDERDATA***");
+
+        const dataStore = modules.dataStore();
+        const cacheCollection = dataStore.collection('ordercache');
+
+
+
+        function getCollectionData(collectionName) {
+            //const query = new modules.Query();
+            //query.equalTo('Active', 'true');
+            const collection = dataStore.collection(collectionName);
+
+            return new Promise((resolve, reject) => {
+                console.log(`finding ${collectionName}`);
+                collection.find(null, (err, result) => {
+                    if (err) {
+                        return reject(err);
+                    }
+
+                    console.log(`found ${collectionName}`);
+
+                    return resolve(result);
+                });
+            });
+        }
+
+        const promise = Promise.props({
+            orderheader: getCollectionData('orderheader'),
+            orderdetail: getCollectionData('orderdetail')
+        });
+
+
+        promise.then((results) => {
+
+            const detailsMap = {};
+
+
+
+
+            for (var i = 0, len = results.orderdetail.length; i < len; i++) {
+                if (!detailsMap[results.orderdetail[i].OrderID + results.orderdetail[i].OrderDeviceID]) {
+
+
+                    detailsMap[results.orderdetail[i].OrderID + results.orderdetail[i].OrderDeviceID] = [];
+                }
+                detailsMap[results.orderdetail[i].OrderID + results.orderdetail[i].OrderDeviceID].push(results.orderdetail[i]);
+            }
+
+            for (var j = 0, len = results.orderheader.length; j < len; j++) {
+
+                if (detailsMap[results.orderheader[j].OrderID + results.orderheader[j].DeviceID]) {
+
+                    results.orderheader[j].OrderDetails = detailsMap[results.orderheader[j].OrderID + results.orderheader[j].DeviceID];
+                }
+            }
+            console.log(results.orderheader);
+            console.log(results.orderheader.length);
+
+            function saveme(entity, doneCallback) {
+                cacheCollection.save(entity, (err, savedResult) => {
+
+                    if (err) {
+                        console.log('******ERROR*****');
+                        console.log(err);
+                        return doneCallback(err);
+                    } else {
+                        return doneCallback();
+                    }
+                });
+
+            };
+
+            //async.each(results.orderheader, saveme, function(err) {
+            async.eachLimit(results.orderheader, 5, saveme, (err) => { // code }
+
+                if (err) {
+                    console.log('error writing');
+                    console.log(err);
+                    return complete().setBody(err).runtimeError().done();
+                } else {
+                    console.log("complete");
+                    return complete().setBody().ok().done();
+                }
+
+            });
+
+
+
+        }).catch((error) => {
+            console.log('final catch');
+            console.log(error);
+            complete(error).runtimeError().done();
+        });
+    }
+    flexFunctions.register('cacheOrderData', cacheOrderData);
 });

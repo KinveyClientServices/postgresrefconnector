@@ -1,11 +1,11 @@
 {
-  "name": "postgresrefconnector",
-  "version": "0.1.0",
+  "name": "orderrelation",
+  "version": "0.1.8",
   "private": true,
   "main": "index.js",
   "dependencies": {
-    "kinvey-flex-sdk": "^1.0.1",
-    "pg": "~4.5.5"
+    "kinvey-flex-sdk": "next",
+    "bluebird": "*"
   },
   "scripts": {
     "start": "node index.js"
